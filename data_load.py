@@ -7,7 +7,7 @@ def load_data(path: str | None = None) -> pd.DataFrame:
     Loads CSV data. If `path` is None it tries the default demo file.
     Caches the result for fast reloads.
     """
-    default_path = "cloud_kitchen_survey_synthetic_clean.csv"
+    default_path = "TasteMateDash_data.csv.csv"
     try:
         src = path or default_path
         df = pd.read_csv(src)
