@@ -1,42 +1,71 @@
-# data_load.py
+# data_viz.py
 
-import os
-import pandas as pd
 import streamlit as st
+import pandas as pd
 
-@st.cache_data(show_spinner=False)
-def load_data(path: str | None = None) -> pd.DataFrame:
-    """
-    Attempts to load the survey CSV from:
-      1) the provided path
-      2) root folder: 'cloud_kitchen_survey_synthetic_clean.csv'
-      3) data subfolder: 'data/cloud_kitchen_survey_synthetic_clean.csv'
-    If none are found, returns an empty DataFrame.
-    """
-    candidates = []
-    if path:
-        candidates.append(path)
-    candidates += [
-        "cloud_kitchen_survey_synthetic_clean.csv",
-        os.path.join("data", "cloud_kitchen_survey_synthetic_clean.csv")
+def _explode_counts(df: pd.DataFrame, col: str) -> pd.Series:
+    return df[col].str.split(";").explode().str.strip().value_counts()
+
+def main_viz(df: pd.DataFrame) -> None:
+    st.header("📊 Exploratory Data Visualisation")
+
+    # 1) Check for required columns up front
+    required = [
+        "orders_per_week", "age_group", "income_bracket", "avg_spend_aed",
+        "fav_cuisines", "pack_sustain_score", "liked_features",
+        "order_windows", "tip_pct", "nps"
     ]
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        st.error(
+            f"Missing columns for Data Visualization: {missing}\n"
+            f"Available columns: {list(df.columns)}"
+        )
+        return
 
-    for fp in candidates:
-        if fp and os.path.exists(fp):
-            try:
-                df = pd.read_csv(fp)
-                # ensure multi-select columns are strings
-                for c in ["order_windows","fav_cuisines","allergens","liked_features"]:
-                    if c in df.columns:
-                        df[c] = df[c].astype(str).fillna("")
-                return df
-            except Exception as e:
-                st.error(f"Found '{fp}' but failed to load: {e}")
-                return pd.DataFrame()
+    # 2) Orders per week by age group
+    st.subheader("Orders per Week by Age Group")
+    crosstab = pd.crosstab(df["orders_per_week"], df["age_group"])
+    st.bar_chart(crosstab)
 
-    # If we get here, no file was found
-    st.warning(
-        "⚠️ No default data file found.\n"
-        "Please upload your CSV using the **Upload / Download** tab."
-    )
-    return pd.DataFrame()
+    # 3) Average spend by income bracket
+    st.subheader("Average Spend by Income Bracket")
+    spend_means = df.groupby("income_bracket")["avg_spend_aed"].mean().sort_index()
+    st.bar_chart(spend_means)
+
+    # 4) Favourite cuisines
+    st.subheader("Favourite Cuisines")
+    vc = _explode_counts(df, "fav_cuisines")
+    st.bar_chart(vc)
+
+    # 5) Eco-packaging importance
+    st.subheader("Eco-friendly Packaging Importance")
+    sustain_counts = df["pack_sustain_score"].value_counts().sort_index()
+    st.bar_chart(sustain_counts)
+
+    # 6) Liked features
+    st.subheader("Most Liked App Features")
+    feat_counts = _explode_counts(df, "liked_features")
+    st.bar_chart(feat_counts)
+
+    # 7) Ordering windows preference
+    st.subheader("Ordering Windows Preference")
+    ow_counts = _explode_counts(df, "order_windows")
+    st.bar_chart(ow_counts)
+
+    # 8) Tip percentage distribution
+    st.subheader("Tip Percentage Distribution")
+    tip_bins = pd.cut(df["tip_pct"], bins=10, include_lowest=True)
+    tip_counts = tip_bins.value_counts().sort_index()
+    st.bar_chart(tip_counts)
+
+    # 9) NPS score distribution
+    st.subheader("NPS Score Distribution")
+    nps_counts = df["nps"].value_counts().sort_index()
+    st.bar_chart(nps_counts)
+
+    # 10) Correlation matrix (table)
+    st.subheader("Numeric Feature Correlations")
+    num_cols = df.select_dtypes("number").columns
+    corr = df[num_cols].corr()
+    st.dataframe(corr.style.background_gradient(cmap="RdYlGn"))
